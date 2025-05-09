@@ -2,104 +2,71 @@ import os
 import torch
 import numpy as np
 from PIL import Image
-import argparse
-import matplotlib.pyplot as plt
 from model.unet import EfficientUNet
-from evaluate import evaluate
+from dataset.mars_dataset import RealMarsDataset
 from config import *
+from evaluation.render import render_3d
+import matplotlib.pyplot as plt
 
-PATCH_SIZE = 256
-STRIDE = 256
-
-def split_image(image, patch_size, stride):
-    h, w = image.shape
-    patches = []
-    positions = []
+def split_into_patches(img, patch_size, stride):
+    h, w = img.shape
+    patches, positions = [], []
     for i in range(0, h - patch_size + 1, stride):
         for j in range(0, w - patch_size + 1, stride):
-            patch = image[i:i + patch_size, j:j + patch_size]
+            patch = img[i:i+patch_size, j:j+patch_size]
             patches.append(patch)
             positions.append((i, j))
-    return patches, positions
+    return patches, positions, h, w
 
-def stitch_predictions(preds, positions, shape):
-    out = np.zeros(shape)
-    count = np.zeros(shape)
-    for pred, (i, j) in zip(preds, positions):
-        out[i:i + pred.shape[0], j:j + pred.shape[1]] += pred
-        count[i:i + pred.shape[0], j:j + pred.shape[1]] += 1
-    
-    # Gestione sicura della divisione per evitare NaN
-    mask = count > 0
-    result = np.zeros_like(out)
-    result[mask] = out[mask] / count[mask]
-    
-    return result
+def stitch_patches(patches, positions, h, w, patch_size):
+    stitched = np.zeros((h, w), dtype=np.float32)
+    count = np.zeros((h, w), dtype=np.float32)
+    for patch, (i, j) in zip(patches, positions):
+        stitched[i:i+patch_size, j:j+patch_size] += patch
+        count[i:i+patch_size, j:j+patch_size] += 1
+    return stitched / np.maximum(count, 1)
 
-def predict_full_image(image_path):
-    model = EfficientUNet().to(DEVICE)
-    model.load_state_dict(torch.load(BEST_MODEL_SAVE_PATH, map_location=DEVICE))
-    model.eval()
-    
-    img = Image.open(image_path).convert("L")
-    img_np = np.array(img, dtype=np.float32) / 255.0
-    
-    patches, positions = split_image(img_np, PATCH_SIZE, STRIDE)
-    preds = []
-    
-    with torch.no_grad():
-        for patch in patches:
-            input_tensor = torch.tensor(patch).unsqueeze(0).unsqueeze(0).to(DEVICE)
-            pred = model(input_tensor).squeeze().cpu().numpy()
-            preds.append(pred)
-    
-    stitched = stitch_predictions(preds, positions, img_np.shape)
-    
-    # Gestione di eventuali NaN residui
-    stitched = np.nan_to_num(stitched, nan=0.0)
-    
-    return stitched, img_np
 
-def save_colormap(pred, output_path):
-    plt.figure(figsize=(10, 8))
-    plt.imshow(pred, cmap="terrain")
-    plt.colorbar()
-    plt.title("Predicted DTM")
-    plt.axis("off")
-    plt.savefig(output_path, bbox_inches="tight")
-    plt.close()
+# ======= LOAD IMAGE ======= 
+PAN_IMAGE_PATH = "/Users/cristiandenicola/Documents/data/r2d2 2/CaSSIS_TiffDTMs/MY34_005124_346_1/1/CAS-OTH-MY34_005124_346_1-OPD-03-01-PAN_2.tif"
+img_raw = Image.open(PAN_IMAGE_PATH).convert("L")
+img_np = np.array(img_raw, dtype=np.float32) / 255.0
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--pan", required=True, help="Path to PAN image")
-    parser.add_argument("--gt", help="Optional path to ground truth DTM")
-    parser.add_argument("--out", default="output/full_pred_dtm.tif", help="Output .tif path")
-    parser.add_argument("--out_png", default="output/full_pred_dtm.png", help="Output visualization path")
-    
-    args = parser.parse_args()
-    os.makedirs("output", exist_ok=True)
-    
-    pred_dtm, input_pan = predict_full_image(args.pan)
-    
-    # Verifica presenza di NaN
-    if np.isnan(pred_dtm).any():
-        print("Avviso: NaN rilevati nell'output. Sostituzione con zeri.")
-        pred_dtm = np.nan_to_num(pred_dtm, nan=0.0)
-    
-    Image.fromarray(pred_dtm.astype(np.float32)).save(args.out, format="TIFF")
-    save_colormap(pred_dtm, args.out_png)
-    
-    if args.gt and os.path.exists(args.gt):
-        gt_dtm = np.array(Image.open(args.gt)).astype(np.float32)
-        
-        if gt_dtm.shape != pred_dtm.shape:
-            print(f"⚠️ Attenzione: Le dimensioni non corrispondono. GT: {gt_dtm.shape}, Pred: {pred_dtm.shape}")
-        
-        # Verifica presenza di NaN in ground truth
-        if np.isnan(gt_dtm).any():
-            print("⚠️ Attenzione: NaN rilevati nel ground truth. Sostituzione con zeri.")
-            gt_dtm = np.nan_to_num(gt_dtm, nan=0.0)
-        
-        evaluate(pred_dtm, gt_dtm)
-    else:
-        print("⚠️ Ground truth DTM not found or not provided. Skipping evaluation.")
+# ======= SPLIT =======
+patches, positions, h, w = split_into_patches(img_np, PATCH_SIZE, STRIDE)
+
+# ======= LOAD MODEL =======
+model = EfficientUNet().to(DEVICE)
+model.load_state_dict(torch.load(BEST_MODEL_SAVE_PATH, map_location=DEVICE))
+model.eval()
+
+# ======= PREDICT PATCHES =======
+predicted_patches = []
+with torch.no_grad():
+    for patch in patches:
+        patch_tensor = torch.tensor(patch, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(DEVICE)
+        pred = model(patch_tensor).squeeze().cpu().numpy()
+        predicted_patches.append(pred)
+
+# ======= STITCH =======
+test_dataset = RealMarsDataset(CASSIS_PAN, CASSIS_DTM)
+
+# recupero dtm stats x normalizzazione
+dtm_mean = test_dataset.dtm_mean
+dtm_std = test_dataset.dtm_std
+
+full_prediction = stitch_patches(predicted_patches, positions, h, w, PATCH_SIZE)
+full_prediction = full_prediction * dtm_std + dtm_mean  # denormalizza
+
+# visualize
+plt.imshow(full_prediction, cmap="terrain")
+plt.title("Predicted Elevation Map")
+plt.colorbar()
+plt.axis("off")
+plt.show()
+
+render_3d(full_prediction)
+
+out_path = os.path.join("output", os.path.basename(PAN_IMAGE_PATH).replace(".tif", "_pred.tif"))
+Image.fromarray(full_prediction.astype(np.float32)).save(out_path)
+print(f"✅ Predizione salvata in: {out_path}")

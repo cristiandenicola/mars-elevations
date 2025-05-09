@@ -11,35 +11,41 @@ from evaluation.metrics import rmse, mae, nmad
 from config import *
 import matplotlib.pyplot as plt
 
-# ======= SEED =======
+# casual seed
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 
-# ======= DATA =======
+
 dataset = RealMarsDataset(CASSIS_PAN, CASSIS_DTM)
 dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
-# ======= MODEL =======
+# creo istanza del modello
+# inizializzo optimizer (aggiorna pesi del modello durante il train in base al grad della loss func)
 model = EfficientUNet().to(DEVICE)
 optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5, verbose=True)
 
+# init scheduler
+# usato x ridurre il learning rate quando la loss di train smette di migliorare
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
+
+# var train track e l'early stopping
 best_loss = float("inf")
 losses = []
 no_improve_epochs = 0
 EARLY_STOP_PATIENCE = 10
 
-# ======= RESUME SUPPORT =======
+# check file di checkpoint del modello precedente (resume train)
 if os.path.exists(LAST_MODEL_SAVE_PATH):
     print("⚠️  Resuming from last checkpoint...")
     model.load_state_dict(torch.load(LAST_MODEL_SAVE_PATH))
 
-# ======= TRAIN LOOP =======
+# train loop
 for epoch in range(EPOCHS):
     model.train()
     epoch_loss = 0
     start_time = time.time()
 
+    # itero sui batch di dati forniti dal DataLoader
     for batch_idx, (images, targets) in enumerate(dataloader):
         images, targets = images.to(DEVICE), targets.to(DEVICE)
         preds = model(images)
@@ -47,7 +53,9 @@ for epoch in range(EPOCHS):
 
         optimizer.zero_grad()
         loss.backward()
-        optimizer.step()
+
+        # aggiorno i pesi del modello utilizzando l'ottimizzatore e i gradienti calcolati
+        optimizer.step() 
 
         epoch_loss += loss.item()
 
