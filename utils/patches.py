@@ -5,15 +5,14 @@ import rasterio
 import numpy as np
 from rasterio.windows import Window
 from tqdm import tqdm
+from skimage.feature import local_binary_pattern
 from scipy.stats import mode
 from skimage.measure import shannon_entropy
 
-#root_dir = "/r2d2/CaSSIS_TiffDTMs/"
-#output_dir = "/r2d2/datasets/CaSSIS_dtm_pan/"
 # Define paths
 root_dir = "/Users/cristiandenicola/Documents/data/r2d2 2/CaSSIS_TiffDTMs/"
-output_dir = "/Users/cristiandenicola/Documents/data/test_patches/"
-test_subdir = "MY34_001922_169_1"
+output_dir = "/Users/cristiandenicola/Documents/data/mars_datasets/"
+#test_subdir = "MY34_001922_169_1"
 
 # Config
 patch_size = 256
@@ -22,9 +21,9 @@ overlap = 0.5  # 50% overlap
 black_threshold = 0.2  # 30% black pixels
 
 # flatness
-variance_threshold = 2.0 # + basso + severo
+variance_threshold = 3.0 # + basso + severo
 range_threshold = 2.0 # + basso + severo
-std_threshold = 1.0 # + basso + severo - scarta quelli che hanno val medio vicino a val, quindi con pochi valori diff
+std_threshold = 0.8 # + basso + severo - scarta quelli che hanno val medio vicino a val, quindi con pochi valori diff
 
 stride = int(patch_size * (1 - overlap))
 
@@ -76,18 +75,18 @@ def extract_valid__patches(dtm_path, pan_path, patch_size, stride):
                     continue
                 
                 # check how many unique values the patch has (very few = flat)
-                if len(np.unique(dtm_patch)) < 5 or len(np.unique(pan_patch)) < 5:
+                if len(np.unique(dtm_patch)) < 13 or len(np.unique(pan_patch)) < 13:
                     continue
 
                 # entropy check
-                if shannon_entropy(dtm_patch) < 1.0 or shannon_entropy(pan_patch) < 1.0:
+                if shannon_entropy(dtm_patch) < 1.3 or shannon_entropy(pan_patch) < 1.3:
                     continue
 
                 patches.append(((dtm_patch, x, y), (pan_patch, x, y)))
 
         return patches
     
-for subdir in tqdm([test_subdir]):
+for subdir in tqdm(os.listdir(root_dir)):
     subdir_path = os.path.join(root_dir, subdir, '1')
     if os.path.isdir(subdir_path):
         dtm_file = pan_file = None
