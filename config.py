@@ -17,7 +17,5 @@ CASSIS_DTM = f"{DATA_DIR}/DTM"
 BEST_MODEL_SAVE_PATH = "best_model.pth"
 LAST_MODEL_SAVE_PATH = "last_model.pth"
 
-LOSS_CURVE_SAVE_PATH = "loss_curve.npy"
-
 LOG_CSV_SAVE_PATH = "training_log.csv"
 

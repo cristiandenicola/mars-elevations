@@ -9,17 +9,11 @@ def show_prediction(input_img, pred, gt):
     axs[0].set_title("Input Image")
     axs[0].axis("off")
 
-    im_pred = axs[1].imshow(pred, cmap="terrain") # terrain è OK o meglio altro?
+    im_pred = axs[1].imshow(pred, cmap="terrain")
     axs[1].set_title("Predicted Elevation")
     axs[1].axis("off")
     fig.colorbar(im_pred, ax=axs[1], label="Elevation")
 
-    # TODO: CHIEDERE A TIA
-    #axs[2].imshow(gt, cmap="terrain")
-    #axs[2].set_title("Ground Truth Elevation")
-    #axs[2].axis("off")
-
-    # Mappa degli Errori con Colorbar centrata sullo zero
     error = pred - gt
     im_error = axs[2].imshow(error, cmap="coolwarm", vmin=-np.max(np.abs(error)), vmax=np.max(np.abs(error)))
     axs[2].set_title("Prediction Error")

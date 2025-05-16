@@ -86,6 +86,4 @@ for epoch in range(EPOCHS):
     # save last model
     torch.save(model.state_dict(), LAST_MODEL_SAVE_PATH)
 
-# save curve
-np.save(LOSS_CURVE_SAVE_PATH, np.array(losses))
 print("Training completo ✅")
