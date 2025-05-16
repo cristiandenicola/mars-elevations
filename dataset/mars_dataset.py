@@ -13,73 +13,45 @@ class RealMarsDataset(Dataset):
         self.samples = [] # conterrà coppie di percorsi di file (PAN, DTM) 
         self.pan_dir = pan_dir
         self.dtm_dir = dtm_dir
-        self.stats_path = os.path.join(DATA_DIR, "dataset_stats.json")
 
         pan_files = {f: os.path.join(pan_dir, f) for f in os.listdir(pan_dir) if f.endswith(".tif")}
         dtm_files = {f: os.path.join(dtm_dir, f) for f in os.listdir(dtm_dir) if f.endswith(".tif")}
         shared_files = sorted(set(pan_files.keys()) & set(dtm_files.keys()))
 
         self.samples = [(pan_files[fname], dtm_files[fname]) for fname in shared_files]
+        print(f"✅ Dataset loaded correctly with {len(self.samples)} samples.")
 
-        if os.path.exists(self.stats_path):
-            with open(self.stats_path, "r") as f:
-                stats = json.load(f)
-                self.pan_min = stats["pan_min"]
-                self.pan_max = stats["pan_max"]
-                self.dtm_min = stats["dtm_min"]
-                self.dtm_max = stats["dtm_max"]
-            print("Stats loaded from cache.")
-        else:
-            print("⏳ Computing dataset stats...")
-            
-            # streaming progressivo (vers concatenate è OOM)
-            self.dtm_min = float("inf")
-            self.dtm_max = float("-inf")
-            self.pan_min = float("inf")
-            self.pan_max = float("-inf")
+    def read_raster(self, path, nan_override=None, normalize_pan=False, normalize_dtm=False):
+        with rasterio.open(path) as src:
+            data = src.read(1).astype(np.float32)
 
+            nodata_val = nan_override if nan_override is not None else src.nodata
+            if nodata_val is not None:
+                data[data == nodata_val] = np.nan
 
-            for pan_path, dtm_path in self.samples:
-                with rasterio.open(dtm_path) as src_dtm, rasterio.open(pan_path) as src_pan:
-                    dtm = src_dtm.read(1).astype(np.float32)
-                    pan = src_pan.read(1).astype(np.float32)
+            if normalize_pan:
+                data = data / 32768.0
+                
+                # precauzione per evitare outlier o valori strani
+                data = np.clip(data, 0.0, 1.0)
 
-                    self.dtm_min = min(self.dtm_min, float(dtm.min()))
-                    self.dtm_max = max(self.dtm_max, float(dtm.max()))
-                    self.pan_min = min(self.pan_min, float(pan.min()))
-                    self.pan_max = max(self.pan_max, float(pan.max()))
+            elif normalize_dtm:
+                min_val = np.nanmin(data)
+                max_val = np.nanmax(data)
+                if np.isfinite(min_val) and np.isfinite(max_val) and max_val > min_val:
+                    data = (data - min_val) / (max_val - min_val + 1e-8)
+                data = np.nan_to_num(data, nan=0.0)
 
-            with open(self.stats_path, "w") as f:
-                json.dump({
-                    "pan_min": self.pan_min,
-                    "pan_max": self.pan_max,
-                    "dtm_min": self.dtm_min,
-                    "dtm_max": self.dtm_max
-                }, f)
-
-            print("✅ Stats computed and saved.")
-
-        print(f"✅ Dataset loaded correctly.")
-        print(f"📊 DTM min: {self.dtm_min:.2f}, max: {self.dtm_max:.2f}")
-        print(f"📊 PAN min: {self.pan_min:.2f}, max: {self.pan_max:.2f}")
+            return data
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        def read_raster(path):
-            with rasterio.open(path) as src:
-                return src.read(1).astype(np.float32)
-            
         pan_path, dtm_path = self.samples[idx]
-        pan = read_raster(pan_path)
-        dtm = read_raster(dtm_path)
 
-        # min-max scaling PAN
-        pan = (pan - self.pan_min) / (self.pan_max - self.pan_min + 1e-8)
-
-        # min-max scaling DTM
-        dtm = (dtm - self.dtm_min) / (self.dtm_max - self.dtm_min + 1e-8)
+        pan = self.read_raster(pan_path, nan_override=-32767.0, normalize_pan=True)
+        dtm = self.read_raster(dtm_path, normalize_dtm=True)
 
         # Data augmentation PAN
         if random.random() < 0.5:

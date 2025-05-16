@@ -12,13 +12,12 @@ from skimage.measure import shannon_entropy
 # Define paths
 root_dir = "/Users/cristiandenicola/Documents/data/r2d2 2/CaSSIS_TiffDTMs/"
 output_dir = "/Users/cristiandenicola/Documents/data/mars_datasets/"
-#test_subdir = "MY34_001922_169_1"
 
 # Config
 patch_size = 256
 overlap = 0.5  # 50% overlap
 
-black_threshold = 0.2  # 30% black pixels
+black_threshold = 0.2  # 20% black pixels
 
 # flatness
 variance_threshold = 3.0 # + basso + severo

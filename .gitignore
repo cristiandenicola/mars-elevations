@@ -26,3 +26,5 @@ Temporary Items
 
 # Env
 mars-env/
+
+#__pycache__/

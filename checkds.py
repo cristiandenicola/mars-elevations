@@ -10,7 +10,7 @@ real_mars_dataset = RealMarsDataset(CASSIS_PAN, CASSIS_DTM)
 dataloader = DataLoader(real_mars_dataset, batch_size=1, shuffle=False)
 
 # Numero di coppie da visualizzare
-num_samples_to_plot = 10  # Puoi cambiare questo numero
+num_samples_to_plot = 50  # Puoi cambiare questo numero
 
 # Visualizza alcune coppie PAN-DTM
 for i, (pan_tensor, dtm_tensor, filename) in enumerate(dataloader):
