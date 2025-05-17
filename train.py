@@ -7,9 +7,7 @@ from torch.utils.data import DataLoader
 from model.unet import EfficientUNet
 from dataset.mars_dataset import RealMarsDataset
 from loss.loss import combined_loss
-from evaluation.metrics import rmse, mae, nmad
 from config import *
-import matplotlib.pyplot as plt
 
 # casual seed
 torch.manual_seed(SEED)
@@ -46,7 +44,7 @@ for epoch in range(EPOCHS):
     start_time = time.time()
 
     # itero sui batch di dati forniti dal DataLoader
-    for batch_idx, (images, targets) in enumerate(dataloader):
+    for batch_idx, (images, targets, _) in enumerate(dataloader):
         images, targets = images.to(DEVICE), targets.to(DEVICE)
         preds = model(images)
         loss = combined_loss(preds, targets)
