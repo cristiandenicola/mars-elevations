@@ -3,7 +3,10 @@ PATCH_SIZE = 256
 STRIDE = 128
 BATCH_SIZE = 16
 EPOCHS = 100
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 1e-5
+SCHEDULER_PATIENCE = 5
+EARLY_STOP_PATIENCE = 10
+LR_FACTOR = 0.5
 SEED = 42
 
 DEVICE = "mps"
@@ -19,5 +22,5 @@ LAST_MODEL_SAVE_PATH = "last_model.pth"
 
 LOG_CSV_SAVE_PATH = "training_log.csv"
 
-IMG_SAVE_DIR = "pred_vs_gt"
+PRED_SAVE_DIR = "train_pred"
 

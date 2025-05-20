@@ -16,8 +16,10 @@ def charbonnier_loss(pred, target, epsilon=1e-3):
     diff = pred - target
     return torch.mean(torch.sqrt(diff ** 2 + epsilon ** 2))
 
-def combined_loss(pred, target, alpha=0.9):
-    data_loss = charbonnier_loss(pred, target)
-    grad_loss = gradient_difference_loss(pred, target)
-    return alpha * data_loss + (1 - alpha) * grad_loss
+def combined_loss(alpha=0.8):
+    def loss_fn(pred, target):
+        data_loss = charbonnier_loss(pred, target)
+        grad_loss = gradient_difference_loss(pred, target)
+        return alpha * data_loss + (1 - alpha) * grad_loss
+    return loss_fn
 
