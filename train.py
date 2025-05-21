@@ -117,7 +117,7 @@ for epoch in range(start_epoch, EPOCHS):
         no_improve_epochs = 0
         torch.save(model.state_dict(), BEST_MODEL_SAVE_PATH)
         print("💾 Nuovo best model salvato.")
-        save_results.save_predictions(model, val_loader, DEVICE, PRED_SAVE_DIR, num_images=5)
+        save_results.save_predictions(model, val_loader, DEVICE, PRED_SAVE_DIR)
     else:
         no_improve_epochs += 1
         print(f"⏸️ Nessun miglioramento. Epoche senza progresso: {no_improve_epochs}/{EARLY_STOP_PATIENCE}")

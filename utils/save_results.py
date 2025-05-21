@@ -5,6 +5,7 @@ import numpy as np
 import imageio.v3 as iio
 import matplotlib.pyplot as plt
 
+# USATA IN test.py
 def save_test_results(results_dict, output_dir="test_results", predictions_subdir="predictions", metrics_filename="metrics.json"):
     """
     Salva i risultati del test, incluse le metriche per ogni immagine e, opzionalmente,
@@ -29,6 +30,7 @@ def save_test_results(results_dict, output_dir="test_results", predictions_subdi
 
     print(f"💾 Predizioni e Target (se presenti) salvati in: {predictions_path}")
 
+# USATA IN test.py
 def save_prediction_images(output_np, target_np, filename, output_dir="test_results", predictions_subdir="predictions"):
     """
     Salva le immagini della predizione e del target.
@@ -45,36 +47,58 @@ def save_prediction_images(output_np, target_np, filename, output_dir="test_resu
     plt.imsave(os.path.join(predictions_path, f"{filename}_prediction.png"), output_np, cmap='viridis')
     plt.imsave(os.path.join(predictions_path, f"{filename}_target.png"), target_np, cmap='viridis')
 
-def save_predictions(model, val_loader, device, save_dir, num_images=5):
-    os.makedirs(save_dir, exist_ok=True)
+def save_predictions(model, dataloader, device, save_dir, num_images=5, fixed_indices=[0, 10, 25, 50, 100]):
     model.eval()
+    os.makedirs(save_dir, exist_ok=True)
 
-    count = 0
+    fixed_saved = 0
+    random_saved = 0
+    total_saved = 0
+    max_to_save = len(fixed_indices) + num_images
+
+    # Prendiamo indici random a priori
+    dataset_size = len(dataloader.dataset)
+    random_indices = set(torch.randperm(dataset_size).tolist()[:num_images])
+    fixed_indices = set(fixed_indices)
+
     with torch.no_grad():
-        for sample in val_loader:
-            pan = sample["pan"].to(device)
-            dtm = sample["dtm"].to(device)
-            name = sample["name"]
+        global_idx = 0
+        for batch in dataloader:
+            pan = batch["pan"].to(device)
+            dtm = batch["dtm"].to(device)
+            names = batch["name"]
 
-            pred = model(pan)
+            preds = model(pan)
 
-            for i in range(pan.size(0)):
-                if count >= num_images:
+            for b in range(pan.size(0)):
+                if total_saved >= max_to_save:
                     return
-                
-                # Estrai le singole immagini
-                pan_img = pan[i].squeeze().cpu().numpy()
-                gt_img = dtm[i].squeeze().cpu().numpy()
-                pred_img = pred[i].squeeze().cpu().numpy()
-                file_name = name[i]
 
-                # Scala in [0, 255] per PNG (opzionale: mantieni float per .tif/.npy)
-                def to_uint8(x):
-                    x = np.clip(x, 0, 1)
-                    return (x * 255).astype(np.uint8)
+                if global_idx in fixed_indices:
+                    label = f"fixed_{global_idx}_{names[b]}"
+                    save_single_prediction(pan[b], dtm[b], preds[b], save_dir, label)
+                    fixed_saved += 1
+                    total_saved += 1
 
-                iio.imwrite(os.path.join(save_dir, f"{count}_pan.png"),  to_uint8(pan_img))
-                iio.imwrite(os.path.join(save_dir, f"{count}_gt.png"),   to_uint8(gt_img))
-                iio.imwrite(os.path.join(save_dir, f"{count}_pred.png"), to_uint8(pred_img))
+                elif global_idx in random_indices:
+                    label = f"random_{global_idx}_{names[b]}"
+                    save_single_prediction(pan[b], dtm[b], preds[b], save_dir, label)
+                    random_saved += 1
+                    total_saved += 1
 
-                count += 1
+                global_idx += 1
+
+
+def save_single_prediction(pan_img, gt, pred, save_dir, name):
+    pan_img = pan_img.squeeze().cpu().numpy()
+    gt = gt.squeeze().cpu().numpy()
+    pred = pred.squeeze().cpu().numpy()
+
+    # Scala in [0, 255] per PNG (opzionale: mantieni float per .tif/.npy)
+    def to_uint8(x):
+        x = np.clip(x, 0, 1)
+        return (x * 255).astype(np.uint8)
+
+    iio.imwrite(os.path.join(save_dir, f"{name}_pan.png"),  to_uint8(pan_img))
+    iio.imwrite(os.path.join(save_dir, f"{name}_gt.png"),   to_uint8(gt))
+    iio.imwrite(os.path.join(save_dir, f"{name}_pred.png"), to_uint8(pred))
