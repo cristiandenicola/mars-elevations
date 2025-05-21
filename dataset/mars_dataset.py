@@ -29,9 +29,20 @@ class RealMarsDataset(Dataset):
                 data[data == nodata_val] = np.nan
 
             if normalize_type == "pan":
-                data = data / 32768.0
-                data = np.clip(data, 0.0, 1.0)
-                data = np.nan_to_num(data, nan=0.0)
+                valid_mask = np.isfinite(data) # Identifica i valori non NaN
+                if np.any(valid_mask):
+                    p2 = np.percentile(data[valid_mask], 2)
+                    p98 = np.percentile(data[valid_mask], 98)
+                    if p98 - p2 > 0:
+                        data = (data - p2) / (p98 - p2) # Normalizza tra p2 e p98
+                        data = np.clip(data, 0.0, 1.0)
+                    else:
+                        data = np.zeros_like(data, dtype=np.float32)
+                else:
+                    data = np.zeros_like(data, dtype=np.float32)
+                data = np.nan_to_num(data, nan=0.0) 
+
+                return data, p2, p98
 
             elif normalize_type == "dtm":
                 min_val = np.nanmin(data)
@@ -41,8 +52,6 @@ class RealMarsDataset(Dataset):
                 data = np.nan_to_num(data, nan=0.0)
 
                 return data, min_val, max_val
-            
-            return data
         
     def augment(self, pan, dtm):
         if random.random() < 0.5:
@@ -64,7 +73,7 @@ class RealMarsDataset(Dataset):
     def __getitem__(self, idx):
         pan_path, dtm_path = self.samples[idx]
 
-        pan = self.read_raster(pan_path, nan_override=-32767.0, normalize_type="pan")
+        pan, min_val, max_val = self.read_raster(pan_path, nan_override=-32767.0, normalize_type="pan")
         dtm, min_val, max_val = self.read_raster(dtm_path, normalize_type="dtm")
 
         pan, dtm = self.augment(pan, dtm)
