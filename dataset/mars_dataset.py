@@ -73,8 +73,8 @@ class RealMarsDataset(Dataset):
     def __getitem__(self, idx):
         pan_path, dtm_path = self.samples[idx]
 
-        pan, min_val, max_val = self.read_raster(pan_path, nan_override=-32767.0, normalize_type="pan")
-        dtm, min_val, max_val = self.read_raster(dtm_path, normalize_type="dtm")
+        pan, pan_p2, pan_p98 = self.read_raster(pan_path, nan_override=-32767.0, normalize_type="pan")
+        dtm, dtm_min, dtm_max = self.read_raster(dtm_path, normalize_type="dtm")
 
         pan, dtm = self.augment(pan, dtm)
 
@@ -85,8 +85,10 @@ class RealMarsDataset(Dataset):
             "pan": pan_tensor,
             "dtm": dtm_tensor,
             "name": os.path.basename(pan_path),
-            "min_val": torch.tensor(min_val).float(),
-            "max_val": torch.tensor(max_val).float()
+            "min_val": torch.tensor(dtm_min).float(),
+            "max_val": torch.tensor(dtm_max).float(),
+            "pan_p2": torch.tensor(pan_p2).float(),
+            "pan_p98": torch.tensor(pan_p98).float()
         }
 
         return sample
