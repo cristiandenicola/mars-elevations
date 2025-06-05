@@ -1,9 +1,7 @@
 import os
 import torch
 from torch.utils.data import Dataset
-from PIL import Image
 import numpy as np
-import json
 import rasterio
 import random
 from config import * 
@@ -29,26 +27,22 @@ class RealMarsDataset(Dataset):
                 data[data == nodata_val] = np.nan
 
             if normalize_type == "pan":
-                valid_mask = np.isfinite(data) # Identifica i valori non NaN
-                if np.any(valid_mask):
-                    p2 = np.percentile(data[valid_mask], 2)
-                    p98 = np.percentile(data[valid_mask], 98)
-                    if p98 - p2 > 0:
-                        data = (data - p2) / (p98 - p2) # Normalizza tra p2 e p98
-                        data = np.clip(data, 0.0, 1.0)
-                    else:
-                        data = np.zeros_like(data, dtype=np.float32)
-                else:
-                    data = np.zeros_like(data, dtype=np.float32)
-                data = np.nan_to_num(data, nan=0.0) 
+                data = (data - GLOBAL_PAN_MEAN) / GLOBAL_PAN_STD
+                data = np.nan_to_num(data, nan=0.0)
 
-                return data, p2, p98
+                return data, 0.0, 0.0
 
             elif normalize_type == "dtm":
                 min_val = np.nanmin(data)
                 max_val = np.nanmax(data)
+
                 if np.isfinite(min_val) and np.isfinite(max_val) and max_val > min_val:
+                    # Normalizzazione a [0,1]
                     data = (data - min_val) / (max_val - min_val + 1e-8)
+                    # Scala la normalizzazione DTM da [0,1] a [0, TARGET_DTM_NORMALIZATION_RANGE] ---
+                    data = data * TARGET_DTM_NORMALIZATION_RANGE 
+                else:
+                    data = np.zeros_like(data, dtype=np.float32)
                 data = np.nan_to_num(data, nan=0.0)
 
                 return data, min_val, max_val
@@ -61,9 +55,9 @@ class RealMarsDataset(Dataset):
             k = random.choice([1, 2, 3])
             pan = np.rot90(pan, k).copy()
             dtm = np.rot90(dtm, k).copy()
-        if random.random() < 0.3:
-            noise = np.random.normal(0, 0.01, pan.shape).astype(np.float32)
-            pan = np.clip(pan + noise, 0.0, 1.0).copy()
+        #if random.random() < 0.3:
+        #    noise = np.random.normal(0, 0.01, pan.shape).astype(np.float32)
+        #    pan = np.clip(pan + noise, 0.0, 1.0).copy()
 
         return pan, dtm
 
@@ -73,7 +67,7 @@ class RealMarsDataset(Dataset):
     def __getitem__(self, idx):
         pan_path, dtm_path = self.samples[idx]
 
-        pan, pan_p2, pan_p98 = self.read_raster(pan_path, nan_override=-32767.0, normalize_type="pan")
+        pan, _, _ = self.read_raster(pan_path, nan_override=-32767.0, normalize_type="pan")
         dtm, dtm_min, dtm_max = self.read_raster(dtm_path, normalize_type="dtm")
 
         pan, dtm = self.augment(pan, dtm)
@@ -87,8 +81,8 @@ class RealMarsDataset(Dataset):
             "name": os.path.basename(pan_path),
             "min_val": torch.tensor(dtm_min).float(),
             "max_val": torch.tensor(dtm_max).float(),
-            "pan_p2": torch.tensor(pan_p2).float(),
-            "pan_p98": torch.tensor(pan_p98).float()
+            "pan_p2": torch.tensor(0.0).float(),
+            "pan_p98": torch.tensor(0.0).float()
         }
 
         return sample

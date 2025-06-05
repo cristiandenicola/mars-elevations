@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from efficientnet_pytorch import EfficientNet
+from config import *
 
 class EfficientUNet(nn.Module):
     def __init__(self, encoder_name="efficientnet-b0", pretrained=True):
@@ -65,6 +66,8 @@ class EfficientUNet(nn.Module):
             nn.Conv2d(32, 1, kernel_size=1),
             nn.Sigmoid()
         )
+        self.global_dtm_max_abs = GLOBAL_DTM_MAX_ABS
+        self.dtm_prediction_margin = DTM_PREDICTION_MARGIN
 
     def forward(self, x):
         x_input = x
@@ -113,4 +116,6 @@ class EfficientUNet(nn.Module):
         if x.shape[-2:] != x_input.shape[-2:]:
             x = F.interpolate(x, size=x_input.shape[-2:], mode="bilinear", align_corners=False)
 
+        x = x * (self.global_dtm_max_abs + self.dtm_prediction_margin)
+        
         return x
