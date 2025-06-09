@@ -8,3 +8,5 @@ scikit-learn
 tqdm
 efficientnet_pytorch
 segmentation_models_pytorch
+rasterio
+opencv-python
