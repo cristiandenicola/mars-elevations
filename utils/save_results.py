@@ -92,37 +92,12 @@ def save_predictions(model, dataloader, device, save_dir, num_images=5, fixed_in
 
                 global_idx += 1
 
-
 def save_single_prediction(pan_img, gt, pred, save_dir, name, original_profile=None):
-    # original_profile: un dizionario contenente i metadati dell'immagine TIFF originale
-    # Se non fornito, il TIFF salvato non avrà georeferenziazione.
-
     pan_img = pan_img.squeeze().cpu().numpy()
     gt = gt.squeeze().cpu().numpy()
     pred = pred.squeeze().cpu().numpy()
 
-    # --- Funzioni di scalatura per visualizzazione PNG (8-bit) ---
-    def scale_dtm_for_vis(arr, max_val_for_vis=DTM_VIS_MAX_RANGE):
-        normalized_arr = arr / max_val_for_vis
-        clipped_arr = np.clip(normalized_arr, 0, 1)
-        return (clipped_arr * 255).astype(np.uint8)
-
-    def scale_pan_for_vis(arr, vmin_pan=-2.0, vmax_pan=2.0):
-        normalized_arr = (arr - vmin_pan) / (vmax_pan - vmin_pan)
-        clipped_arr = np.clip(normalized_arr, 0, 1)
-        return (clipped_arr * 255).astype(np.uint8)
-
-    # --- SALVATAGGIO DELLE IMMAGINI PNG (per ispezione visiva rapida) ---
-    iio.imwrite(os.path.join(save_dir, f"{name}_pan_viz.png"),  scale_pan_for_vis(pan_img))
-    iio.imwrite(os.path.join(save_dir, f"{name}_gt_viz.png"),   scale_dtm_for_vis(gt))
-    iio.imwrite(os.path.join(save_dir, f"{name}_pred_viz.png"), scale_dtm_for_vis(pred))
-
-    # --- SALVATAGGIO DEI DATI ORIGINALI FLOAT come GeoTIFF (.tif) ---
-    # Creazione di un profilo base per il TIFF. Se original_profile è disponibile, usalo.
     if original_profile:
-        # Aggiorna il profilo per il tipo di dati e la dimensione della banda (1 canale)
-        # Assicurati che l'altezza e la larghezza nel profilo siano corrette (256x256)
-        # e che il dtype sia float32 (o float64 se necessario).
         output_profile = original_profile.copy()
         output_profile.update(
             dtype=rasterio.float32,
@@ -131,18 +106,16 @@ def save_single_prediction(pan_img, gt, pred, save_dir, name, original_profile=N
             width=pan_img.shape[1]  # 256
         )
     else:
-        # Profilo di default se non ci sono informazioni georeferenziate
         output_profile = {
             'driver': 'GTiff',
             'height': pan_img.shape[0],
             'width': pan_img.shape[1],
             'count': 1,
             'dtype': rasterio.float32,
-            'crs': None, # Nessun sistema di riferimento di coordinate
-            'transform': rasterio.transform.from_origin(0, pan_img.shape[0], 1, 1) # Transformazione identity
+            'crs': None,
+            'transform': rasterio.transform.from_origin(0, pan_img.shape[0], 1, 1)
         }
 
-    # Funzione helper per salvare un singolo array come TIFF
     def save_array_as_tif(data_array, filepath, profile):
         with rasterio.open(filepath, 'w', **profile) as dst:
             dst.write(data_array.astype(rasterio.float32), 1)
