@@ -1,5 +1,5 @@
-import torch
 import os
+import torch
 
 # Training hyperparameters
 PATCH_SIZE = 256
@@ -13,7 +13,6 @@ LR_FACTOR = 0.5
 SEED = 42
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Data paths
 CASSIS_PAN = "/content/dataset_pan_patches/PAN"
 CASSIS_DTM = "/content/dataset_dtm_patches/DTM"
 
@@ -23,6 +22,7 @@ BEST_MODEL_SAVE_PATH = os.path.join(COLAB_SAVE_ROOT, "best_model.pth")
 LAST_MODEL_SAVE_PATH = os.path.join(COLAB_SAVE_ROOT, "last_model.pth")
 LOG_CSV_SAVE_PATH = os.path.join(COLAB_SAVE_ROOT, "training_log.csv")
 PRED_SAVE_DIR = os.path.join(COLAB_SAVE_ROOT, "train_pred")
+os.makedirs(PRED_SAVE_DIR, exist_ok=True)
 
 # Dataset parameters
 TARGET_DTM_NORMALIZATION_RANGE = 600.0

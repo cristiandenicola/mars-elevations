@@ -44,7 +44,7 @@ if os.path.exists(LAST_MODEL_SAVE_PATH):
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch'] + 1
-    best_val_rmse = checkpoint['best_val_rmse']
+    best_val_rmse = checkpoint['best_val_loss']
     no_improve_epochs = checkpoint['no_improve_epochs']
     print(f"✔️ Checkpoint caricato. Riprendo da epoca {start_epoch}")
 
@@ -67,20 +67,31 @@ def train_one_epoch(model, loader):
 def validate_one_epoch(model, loader):
     model.eval()
     val_loss = 0.0
-    all_preds, all_gts = [], []
+    metric_sums = {
+        "rmse": 0.0,
+        "mae": 0.0,
+        "nmad": 0.0,
+        "delta1": 0.0,
+        "delta2": 0.0,
+        "delta3": 0.0
+    }
+    count = 0
+
     with torch.no_grad():
         for sample in tqdm(loader, desc="Validation", leave=False):
             x = sample["pan"].to(DEVICE)
             y = sample["dtm"].to(DEVICE)
-            
+
             preds = model(x)
             val_loss += loss_fn(preds, y).item() * x.size(0)
-            all_preds.append(preds.cpu())
-            all_gts.append(y.cpu())
-    all_preds = torch.cat(all_preds)
-    all_gts = torch.cat(all_gts)
-    metrics = compute_metrics(all_preds, all_gts)
-    return val_loss / len(loader.dataset), metrics
+
+            metrics = compute_metrics(preds.cpu(), y.cpu())
+            for k in metric_sums:
+                metric_sums[k] += metrics[k] * x.size(0)
+            count += x.size(0)
+
+    avg_metrics = {k: v / count for k, v in metric_sums.items()}
+    return val_loss / count, avg_metrics
 
 # Training
 for epoch in range(start_epoch, EPOCHS):
