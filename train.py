@@ -28,14 +28,14 @@ val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 # Modello e ottimizzatore
 model = EfficientUNet().to(DEVICE)
 loss_fn = combined_loss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-2)
+optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode='min', factor=LR_FACTOR, patience=SCHEDULER_PATIENCE
 )
 
 # Resume
 start_epoch = 0
-best_val_rmse = float('inf')
+best_val_loss = float('inf')
 no_improve_epochs = 0
 log = []
 
@@ -44,7 +44,7 @@ if os.path.exists(LAST_MODEL_SAVE_PATH):
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch'] + 1
-    best_val_rmse = checkpoint['best_val_loss']
+    best_val_loss = checkpoint['best_val_loss']
     no_improve_epochs = checkpoint['no_improve_epochs']
     print(f"✔️ Checkpoint caricato. Riprendo da epoca {start_epoch}")
 
@@ -119,14 +119,12 @@ for epoch in range(start_epoch, EPOCHS):
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
-        'best_val_loss': best_val_rmse,
+        'best_val_loss': best_val_loss,
         'no_improve_epochs': no_improve_epochs,
     }, LAST_MODEL_SAVE_PATH)
     
-    current_val_rmse = val_metrics['rmse']
-
-    if current_val_rmse < best_val_rmse:
-        best_val_rmse = current_val_rmse
+    if val_loss < best_val_loss:
+        best_val_loss = val_loss
         no_improve_epochs = 0
         torch.save(model.state_dict(), BEST_MODEL_SAVE_PATH)
         print("💾 Nuovo best model salvato.")

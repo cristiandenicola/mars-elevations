@@ -5,7 +5,7 @@ import segmentation_models_pytorch as smp
 from config import *
 
 class EfficientUNet(nn.Module):
-    def __init__(self, encoder_name="efficientnet-b3", pretrained=True):
+    def __init__(self, encoder_name="efficientnet-b4", pretrained=True):
         super().__init__()
 
         self.model = smp.Unet(
@@ -23,6 +23,6 @@ class EfficientUNet(nn.Module):
 
         output_normalized = torch.sigmoid(logits)
 
-        denormalized_output = output_normalized * (self.global_dtm_max_abs + self.dtm_prediction_margin)
+        denormalized_output = output_normalized * self.global_dtm_max_abs
         
         return denormalized_output
