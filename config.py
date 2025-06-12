@@ -1,6 +1,3 @@
-import os
-import torch
-
 # Training hyperparameters
 PATCH_SIZE = 256
 STRIDE = 128
@@ -11,18 +8,18 @@ SCHEDULER_PATIENCE = 5
 EARLY_STOP_PATIENCE = 10
 LR_FACTOR = 0.5
 SEED = 42
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DEVICE = "mps"
 
-CASSIS_PAN = "/content/dataset_pan_patches/PAN"
-CASSIS_DTM = "/content/dataset_dtm_patches/DTM"
+# Data paths
+DATA_DIR = "/Users/cristiandenicola/Documents/data/mars_datasets/"
+CASSIS_PAN = f"{DATA_DIR}/PAN"
+CASSIS_DTM = f"{DATA_DIR}/DTM"
 
-COLAB_SAVE_ROOT = "/content/drive/MyDrive/MARS"
-
-BEST_MODEL_SAVE_PATH = os.path.join(COLAB_SAVE_ROOT, "best_model.pth")
-LAST_MODEL_SAVE_PATH = os.path.join(COLAB_SAVE_ROOT, "last_model.pth")
-LOG_CSV_SAVE_PATH = os.path.join(COLAB_SAVE_ROOT, "training_log.csv")
-PRED_SAVE_DIR = os.path.join(COLAB_SAVE_ROOT, "train_pred")
-os.makedirs(PRED_SAVE_DIR, exist_ok=True)
+# Model and infos paths
+BEST_MODEL_SAVE_PATH = "best_model.pth"
+LAST_MODEL_SAVE_PATH = "last_model.pth"
+LOG_CSV_SAVE_PATH = "training_log.csv"
+PRED_SAVE_DIR = "train_pred"
 
 # Dataset parameters
 TARGET_DTM_NORMALIZATION_RANGE = 600.0
