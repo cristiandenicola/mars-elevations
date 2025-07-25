@@ -4,7 +4,7 @@ import torch
 from utils import save_results
 from torch.utils.data import DataLoader, random_split
 import matplotlib.pyplot as plt
-from model.unet import SwinUNetRegressor
+from model.unet import EfficientUNet
 from dataset.mars_dataset import RealMarsDataset
 from loss.loss import combined_loss
 from evaluation.metrics import *
@@ -26,7 +26,7 @@ train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 # Modello e ottimizzatore
-model = SwinUNetRegressor().to(DEVICE)
+model = EfficientUNet().to(DEVICE)
 loss_fn = combined_loss()
 optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
