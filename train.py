@@ -1,4 +1,6 @@
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "3,4"
+
 import pandas as pd
 import torch
 from utils import save_results
@@ -6,7 +8,7 @@ from torch.utils.data import DataLoader, random_split
 import matplotlib.pyplot as plt
 from model.unet import EfficientUNet
 from dataset.mars_dataset import RealMarsDataset
-from loss.loss import combined_loss
+from loss.loss import combined_loss_with_perceptual, VGGPerceptualLoss
 from evaluation.metrics import *
 from config import *
 from tqdm import tqdm
@@ -26,8 +28,14 @@ train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 # Modello e ottimizzatore
-model = EfficientUNet().to(DEVICE)
-loss_fn = combined_loss()
+model = EfficientUNet()
+if torch.cuda.device_count() > 1:
+    model = torch.nn.DataParallel(model)
+model = model.to(DEVICE)
+
+perceptual_loss_fn = VGGPerceptualLoss().to(DEVICE)
+loss_fn = combined_loss_with_perceptual(perceptual_loss_fn=perceptual_loss_fn)
+
 optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode='min', factor=LR_FACTOR, patience=SCHEDULER_PATIENCE
@@ -41,7 +49,16 @@ log = []
 
 if os.path.exists(LAST_MODEL_SAVE_PATH):
     checkpoint = torch.load(LAST_MODEL_SAVE_PATH)
-    model.load_state_dict(checkpoint['model_state_dict'])
+
+    state_dict = checkpoint['model_state_dict']
+    if list(state_dict.keys())[0].startswith('module.') and not isinstance(model, torch.nn.DataParallel):
+        from collections import OrderedDict
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            new_state_dict[k.replace("module.", "")] = v
+        state_dict = new_state_dict
+
+    model.load_state_dict(state_dict)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch'] + 1
     best_val_loss = checkpoint['best_val_loss']

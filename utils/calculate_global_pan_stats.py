@@ -102,8 +102,6 @@ if __name__ == "__main__":
         new_values = {
             "GLOBAL_PAN_MEAN": f"GLOBAL_PAN_MEAN = {global_pan_mean:.6f}\n",
             "GLOBAL_PAN_STD": f"GLOBAL_PAN_STD = {global_pan_std:.6f}\n",
-            "GLOBAL_DTM_MAX_ABS": f"GLOBAL_DTM_MAX_ABS = {global_dtm_max_abs:.6f}\n",
-            "TARGET_DTM_NORMALIZATION_RANGE": f"TARGET_DTM_NORMALIZATION_RANGE = {target_dtm_norm_range:.6f}\n",
         }
 
         updated_lines = []

@@ -85,24 +85,29 @@ class RealMarsDataset(Dataset):
         # 2. DATA ARGUMENTATION
         pan_augmented, dtm_augmented = self.augment(pan_raw, dtm_raw)
 
-        pan_augmented = np.nan_to_num(pan_augmented, nan=0.0)
-        dtm_augmented = np.nan_to_num(dtm_augmented, nan=0.0)
+        valid_mask = ~np.isnan(dtm_augmented)
+        
+        # Se non ci sono pixel validi, restituisci un tensore zero
+        if not np.any(valid_mask):
+            pan_tensor = torch.zeros(1, pan_raw.shape[0], pan_raw.shape[1], dtype=torch.float32)
+            dtm_tensor = torch.zeros(1, dtm_raw.shape[0], dtm_raw.shape[1], dtype=torch.float32)
+            return {"pan": pan_tensor, "dtm": dtm_tensor, "min_val": 0.0, "max_val": 0.0, "name": os.path.basename(pan_path)}
 
-        # 4. Normalization PAN
+        # Normalizzazione PAN
         pan_normalized = (pan_augmented - GLOBAL_PAN_MEAN) / GLOBAL_PAN_STD
 
-        # Normalization DTM
-        dtm_min = np.nanmin(dtm_augmented)
-        dtm_max = np.nanmax(dtm_augmented)
+        # Normalizzazione DTM
+        dtm_min = np.nanmin(dtm_augmented[valid_mask])
+        dtm_max = np.nanmax(dtm_augmented[valid_mask])
+        dtm_augmented[valid_mask] = (dtm_augmented[valid_mask] - dtm_min) / (dtm_max - dtm_min + 1e-8)
+        dtm_augmented[valid_mask] = dtm_augmented[valid_mask] * TARGET_DTM_NORMALIZATION_RANGE
 
-        if np.isfinite(dtm_min) and np.isfinite(dtm_max) and dtm_max > dtm_min:
-            dtm_normalized = (dtm_augmented - dtm_min) / (dtm_max - dtm_min + 1e-8)
-            dtm_normalized = dtm_normalized * TARGET_DTM_NORMALIZATION_RANGE
-        else:
-            dtm_normalized = np.zeros_like(dtm_augmented, dtype=np.float32)
+        # Conversione dei NaN in 0 DOPO la normalizzazione
+        pan_augmented = np.nan_to_num(pan_normalized, nan=0.0)
+        dtm_augmented = np.nan_to_num(dtm_augmented, nan=0.0)
 
-        pan_tensor = torch.from_numpy(pan_normalized).unsqueeze(0).float()
-        dtm_tensor = torch.from_numpy(dtm_normalized).unsqueeze(0).float()
+        pan_tensor = torch.from_numpy(pan_augmented).unsqueeze(0).float()
+        dtm_tensor = torch.from_numpy(dtm_augmented).unsqueeze(0).float()
 
         sample = {
             "pan": pan_tensor,
@@ -110,8 +115,6 @@ class RealMarsDataset(Dataset):
             "name": os.path.basename(pan_path),
             "min_val": torch.tensor(dtm_min).float(),
             "max_val": torch.tensor(dtm_max).float(),
-            "pan_p2": torch.tensor(0.0).float(),
-            "pan_p98": torch.tensor(0.0).float()
         }
 
         return sample

@@ -1,3 +1,5 @@
+import torch
+
 # Training hyperparameters
 PATCH_SIZE = 256
 STRIDE = 128
@@ -9,7 +11,11 @@ EARLY_STOP_PATIENCE = 15
 LR_FACTOR = 0.5
 WEIGHT_DECAY = 1e-2
 SEED = 42
-DEVICE = "mps"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+# Data paths
+#CASSIS_PAN = "/home/cdenicola/my_datasets/PAN"
+#CASSIS_DTM = "/home/cdenicola/my_datasets/DTM"
 
 # Data paths
 DATA_DIR = "/Users/cristiandenicola/Documents/data/mars_datasets/"
@@ -26,5 +32,5 @@ PRED_SAVE_DIR = "train_pred"
 TARGET_DTM_NORMALIZATION_RANGE = 600.0
 GLOBAL_DTM_MAX_ABS = 600.0
 DTM_PREDICTION_MARGIN = 50.0
-GLOBAL_PAN_STD = 13933.474609
-GLOBAL_PAN_MEAN = 156.814468
+GLOBAL_PAN_MEAN = -503.357422
+GLOBAL_PAN_STD = 14442.098633

@@ -1,6 +1,5 @@
 import os
 import shutil
-
 import rasterio
 import numpy as np
 from rasterio.windows import Window
@@ -15,14 +14,12 @@ output_dir = "/Users/cristiandenicola/Documents/data/mars_datasets/"
 
 # Config
 patch_size = 256
-overlap = 0.5  # 50% overlap
+overlap = 0.6  # 50% overlap
 
-black_threshold = 0.2  # 20% black pixels
-
-# flatness
-variance_threshold = 3.0 # + basso + severo
-range_threshold = 2.0 # + basso + severo
-std_threshold = 0.8 # + basso + severo - scarta quelli che hanno val medio vicino a val, quindi con pochi valori diff
+black_threshold = 0.5  # Aumentiamo la soglia, accettando più pixel neri
+variance_threshold = 1.0 # Meno severo sulla varianza
+range_threshold = 1.0 # Meno severo sul range
+std_threshold = 0.5 # Meno severo sulla deviazione standard
 
 stride = int(patch_size * (1 - overlap))
 
@@ -59,26 +56,15 @@ def extract_valid__patches(dtm_path, pan_path, patch_size, stride):
                 dtm_patch = dtm[y:y+patch_size, x:x+patch_size]
                 pan_patch = pan[y:y+patch_size, x:x+patch_size]
 
-                # Check black ratio on both
                 if np.mean(dtm_patch == 0) > black_threshold or np.mean(pan_patch == 0) > black_threshold:
                     continue
 
-                # Check flatness (variance, range, and standard deviation) on both
                 if np.var(dtm_patch) < variance_threshold or np.var(pan_patch) < variance_threshold or \
                    np.ptp(dtm_patch) < range_threshold or np.ptp(pan_patch) < range_threshold or \
                    np.std(dtm_patch) < std_threshold or np.std(pan_patch) < std_threshold:
                     continue
 
-                # check how much the patch is covered by a single dominant value
-                if dominant_value_ratio(dtm_patch) > 0.95 or dominant_value_ratio(pan_patch) > 0.95:
-                    continue
-                
-                # check how many unique values the patch has (very few = flat)
-                if len(np.unique(dtm_patch)) < 13 or len(np.unique(pan_patch)) < 13:
-                    continue
-
-                # entropy check
-                if shannon_entropy(dtm_patch) < 1.3 or shannon_entropy(pan_patch) < 1.3:
+                if shannon_entropy(dtm_patch) < 1.0 or shannon_entropy(pan_patch) < 1.0:
                     continue
 
                 patches.append(((dtm_patch, x, y), (pan_patch, x, y)))
