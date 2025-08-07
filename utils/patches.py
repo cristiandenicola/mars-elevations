@@ -4,26 +4,22 @@ import rasterio
 import numpy as np
 from rasterio.windows import Window
 from tqdm import tqdm
-from skimage.feature import local_binary_pattern
-from scipy.stats import mode
 from skimage.measure import shannon_entropy
 
-# Define paths
 root_dir = "/Users/cristiandenicola/Documents/data/r2d2 2/CaSSIS_TiffDTMs/"
-output_dir = "/Users/cristiandenicola/Documents/data/mars_datasets/"
+output_dir = "/Users/cristiandenicola/Documents/data/mars_datasets_v2/"
 
-# Config
+# Parametri di configurazione ottimizzati
 patch_size = 256
-overlap = 0.6  # 50% overlap
-
-black_threshold = 0.5  # Aumentiamo la soglia, accettando più pixel neri
-variance_threshold = 1.0 # Meno severo sulla varianza
-range_threshold = 1.0 # Meno severo sul range
-std_threshold = 0.5 # Meno severo sulla deviazione standard
-
+overlap = 0.5
 stride = int(patch_size * (1 - overlap))
 
-# Prepare output
+# Soglie di qualità più severe
+black_threshold = 0.05  # Max 5% di pixel a valore zero
+variance_threshold = 50.0  # La varianza deve essere significativa
+shannon_entropy_threshold = 2.0  # La patch deve essere informativa
+
+# Prepara la directory di output
 if os.path.exists(output_dir):
     shutil.rmtree(output_dir)
     
@@ -31,46 +27,43 @@ os.makedirs(output_dir)
 os.makedirs(os.path.join(output_dir, 'DTM'))
 os.makedirs(os.path.join(output_dir, 'PAN'))
 
-def pad_image(image, patch_size):
-    height, width = image.shape
-    pad_h = (patch_size - height % patch_size) % patch_size
-    pad_w = (patch_size - width % patch_size) % patch_size
-    if pad_h > 0 or pad_w > 0:
-        image = np.pad(image, ((0, pad_h), (0, pad_w)), mode='constant', constant_values=0)
-    return image
+def extract_high_quality_patches(dtm_path, pan_path, patch_size, stride):
+    """
+    Estrae patch di alta qualità e senza artefatti di bordo.
+    """
+    patches = []
+    try:
+        with rasterio.open(dtm_path) as dtm_src, rasterio.open(pan_path) as pan_src:
+            dtm_full = dtm_src.read(1)
+            pan_full = pan_src.read(1)
 
-def dominant_value_ratio(patch):
-    values, counts = np.unique(patch, return_counts=True)
-    return np.max(counts) / patch.size
+            height, width = dtm_full.shape
+            
+            # Scorri solo le aree che non creano artefatti di bordo
+            for y in range(0, height - patch_size + 1, stride):
+                for x in range(0, width - patch_size + 1, stride):
+                    dtm_patch = dtm_full[y:y+patch_size, x:x+patch_size]
+                    pan_patch = pan_full[y:y+patch_size, x:x+patch_size]
 
-def extract_valid__patches(dtm_path, pan_path, patch_size, stride):
-    with rasterio.open(dtm_path) as dtm_src, rasterio.open(pan_path) as pan_src:
-        dtm = pad_image(dtm_src.read(1), patch_size)
-        pan = pad_image(pan_src.read(1), patch_size)
+                    # Filtri di qualità più severi
+                    if np.mean(dtm_patch == 0) > black_threshold or np.mean(pan_patch == 0) > black_threshold:
+                        continue
 
-        height, width = dtm.shape
-        patches = []
+                    if np.var(dtm_patch) < variance_threshold or np.var(pan_patch) < variance_threshold:
+                        continue
+                        
+                    if shannon_entropy(dtm_patch) < shannon_entropy_threshold or shannon_entropy(pan_patch) < shannon_entropy_threshold:
+                        continue
 
-        for y in range(0, height - patch_size + 1, stride):
-            for x in range(0, width - patch_size + 1, stride):
-                dtm_patch = dtm[y:y+patch_size, x:x+patch_size]
-                pan_patch = pan[y:y+patch_size, x:x+patch_size]
-
-                if np.mean(dtm_patch == 0) > black_threshold or np.mean(pan_patch == 0) > black_threshold:
-                    continue
-
-                if np.var(dtm_patch) < variance_threshold or np.var(pan_patch) < variance_threshold or \
-                   np.ptp(dtm_patch) < range_threshold or np.ptp(pan_patch) < range_threshold or \
-                   np.std(dtm_patch) < std_threshold or np.std(pan_patch) < std_threshold:
-                    continue
-
-                if shannon_entropy(dtm_patch) < 1.0 or shannon_entropy(pan_patch) < 1.0:
-                    continue
-
-                patches.append(((dtm_patch, x, y), (pan_patch, x, y)))
-
-        return patches
+                    patches.append(((dtm_patch, x, y), (pan_patch, x, y)))
     
+    except Exception as e:
+        print(f"Errore durante l'elaborazione dei file {dtm_path} e {pan_path}: {e}")
+    
+    return patches
+
+print("🚀 Avvio estrazione di patch di alta qualità...")
+
 for subdir in tqdm(os.listdir(root_dir)):
     subdir_path = os.path.join(root_dir, subdir, '1')
     if os.path.isdir(subdir_path):
@@ -83,7 +76,7 @@ for subdir in tqdm(os.listdir(root_dir)):
                 pan_file = os.path.join(subdir_path, file)
 
         if dtm_file and pan_file:
-            patches = extract_valid__patches(dtm_file, pan_file, patch_size, stride)
+            patches = extract_high_quality_patches(dtm_file, pan_file, patch_size, stride)
 
             for idx, ((dtm_patch, x, y), (pan_patch, _, _)) in enumerate(patches):
                 dtm_path = os.path.join(output_dir, 'DTM', f"{subdir}_x{x}_y{y}.tif")
@@ -99,4 +92,4 @@ for subdir in tqdm(os.listdir(root_dir)):
                                    count=1, dtype=pan_patch.dtype) as dst:
                     dst.write(pan_patch, 1)
 
-print("✅ Dataset creation completed successfully!")
+print("\n✅ Creazione del dataset di alta qualità completata!")

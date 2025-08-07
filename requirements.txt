@@ -1,10 +1,12 @@
 torch
 torchvision
+timm
 numpy
 matplotlib
 Pillow
 scikit-image
 scikit-learn
+pandas
 tqdm
 efficientnet_pytorch
 segmentation_models_pytorch
