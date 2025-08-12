@@ -15,30 +15,56 @@ def edge_loss(pred, target, mask):
     def apply_sobel(x):
         grad_x = F.conv2d(x, sobel_x, padding=1)
         grad_y = F.conv2d(x, sobel_y, padding=1)
-        return torch.sqrt(grad_x ** 2 + grad_y ** 2 + 1e-6)
+        return torch.sqrt(grad_x ** 2 + grad_y ** 2 + 1e-8)
 
     pred_edge = apply_sobel(pred)
     target_edge = apply_sobel(target)
 
-    masked_loss = F.l1_loss(pred_edge * mask, target_edge * mask, reduction='sum')
-    return masked_loss / (torch.sum(mask) + 1e-6)
+    # FIX: Aggiungi controlli per evitare NaN
+    masked_pred = pred_edge * mask
+    masked_target = target_edge * mask
+    
+    # Verifica che non ci siano NaN/Inf
+    if torch.isnan(masked_pred).any() or torch.isnan(masked_target).any():
+        return torch.tensor(0.0, device=pred.device, requires_grad=True)
+    
+    masked_loss = F.l1_loss(masked_pred, masked_target, reduction='sum')
+    mask_sum = torch.sum(mask)
+    
+    # FIX: Controlla divisione per zero
+    if mask_sum < 1e-8:
+        return torch.tensor(0.0, device=pred.device, requires_grad=True)
+    
+    return masked_loss / mask_sum
 
 
 def gradient_difference_loss(pred, target, mask):
-    pred_dx = (pred * mask)[:, :, :, 1:] - (pred * mask)[:, :, :, :-1]
-    pred_dy = (pred * mask)[:, :, 1:, :] - (pred * mask)[:, :, :-1, :]
-
-    target_dx = (target * mask)[:, :, :, 1:] - (target * mask)[:, :, :, :-1]
-    target_dy = (target * mask)[:, :, 1:, :] - (target * mask)[:, :, :-1, :]
+    # FIX: Aggiungi controlli di stabilità
+    if torch.isnan(pred).any() or torch.isnan(target).any():
+        return torch.tensor(0.0, device=pred.device, requires_grad=True)
+    
+    pred_masked = pred * mask
+    target_masked = target * mask
+    
+    pred_dx = pred_masked[:, :, :, 1:] - pred_masked[:, :, :, :-1]
+    pred_dy = pred_masked[:, :, 1:, :] - pred_masked[:, :, :-1, :]
+    target_dx = target_masked[:, :, :, 1:] - target_masked[:, :, :, :-1]
+    target_dy = target_masked[:, :, 1:, :] - target_masked[:, :, :-1, :]
     
     # La maschera deve essere anche ridotta per i gradienti
     mask_dx = mask[:, :, :, 1:]
     mask_dy = mask[:, :, 1:, :]
-
+    
     loss_dx = torch.sum(torch.abs(pred_dx - target_dx) * mask_dx)
     loss_dy = torch.sum(torch.abs(pred_dy - target_dy) * mask_dy)
-
-    return (loss_dx + loss_dy) / (torch.sum(mask_dx) + torch.sum(mask_dy) + 1e-6)
+    
+    total_mask = torch.sum(mask_dx) + torch.sum(mask_dy)
+    
+    # FIX: Controlla divisione per zero
+    if total_mask < 1e-8:
+        return torch.tensor(0.0, device=pred.device, requires_grad=True)
+    
+    return (loss_dx + loss_dy) / total_mask
 
 
 def charbonnier_loss(pred, target, mask, epsilon=1e-3):
@@ -61,16 +87,19 @@ class VGGPerceptualLoss(nn.Module):
         self.register_buffer('std', torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
 
     def forward(self, pred, target):
-        # Il tuo input ha 1 canale, VGG ne vuole 3. Lo duplichiamo.
-        pred_rgb = pred.repeat(1, 3, 1, 1)
-        target_rgb = target.repeat(1, 3, 1, 1)
+        # 1. Cast inputs to float32 before they enter VGG
+        pred_float32 = pred.to(torch.float32)
+        target_float32 = target.to(torch.float32)
+
+        # 2. Il tuo input ha 1 canale, VGG ne vuole 3. Lo duplichiamo.
+        pred_rgb = pred_float32.repeat(1, 3, 1, 1)
+        target_rgb = target_float32.repeat(1, 3, 1, 1)
 
         pred_normalized = (pred_rgb - self.mean) / self.std
         target_normalized = (target_rgb - self.mean) / self.std
 
         pred_features = self.slice1(pred_normalized)
         target_features = self.slice1(target_normalized)
-        
         return torch.mean(torch.abs(pred_features - target_features))
 
 

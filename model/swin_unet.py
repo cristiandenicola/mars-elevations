@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import timm
 import torch.nn.functional as F
+from config import *
 
 class ChannelAttention(nn.Module):
     def __init__(self, channels, reduction=16):
@@ -134,7 +135,7 @@ class ASPP(nn.Module):
         return x
 
 class EnhancedSwinDepth(nn.Module):
-    def __init__(self, pretrained=True, global_max_depth=80.0, input_size=256):
+    def __init__(self, pretrained=True, global_max_depth=GLOBAL_DTM_MAX_ABS, input_size=256):
         super().__init__()
         self.global_dtm_max_abs = global_max_depth
         self.input_size = input_size

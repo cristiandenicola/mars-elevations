@@ -3,7 +3,7 @@ import torch
 # Training hyperparameters
 PATCH_SIZE = 256
 STRIDE = 128
-BATCH_SIZE = 32
+BATCH_SIZE = 12
 EPOCHS = 100
 LEARNING_RATE = 1e-4
 SCHEDULER_PATIENCE = 5
