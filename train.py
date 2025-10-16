@@ -1,6 +1,5 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "2,3"
-
 import pandas as pd
 import torch
 from utils import save_results
@@ -16,12 +15,13 @@ import warnings
 from rasterio.errors import NotGeoreferencedWarning
 import math
 from collections import OrderedDict
+import sys
 
 warnings.filterwarnings("ignore", category=NotGeoreferencedWarning)
 
 os.makedirs(PRED_SAVE_DIR, exist_ok=True)
 
-# Dataset e dataloader
+# Dataset and dataloader
 dataset = RealMarsDataset(CASSIS_PAN, CASSIS_DTM)
 train_size = int(0.8 * len(dataset))
 val_size = len(dataset) - train_size
@@ -31,8 +31,8 @@ train_dataset, val_dataset = random_split(dataset, [train_size, val_size],
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-# Modello enhanced
-model = EnhancedSwinDepth()
+# Enhanced Model
+model = EnhancedSwinDepth(pretrained=True)
 if torch.cuda.device_count() > 1:
     model = torch.nn.DataParallel(model)
 model = model.to(DEVICE)
@@ -43,23 +43,22 @@ loss_fn = combined_loss_with_perceptual(perceptual_loss_fn=perceptual_loss_fn)
 
 # Optimizer
 optimizer = torch.optim.AdamW(
-    model.parameters(), 
+    model.parameters(),
     lr=LEARNING_RATE,
     weight_decay=WEIGHT_DECAY
 )
 
 # Scheduler
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, 
-    mode='min', 
+    optimizer,
+    mode='min',
     factor=0.7,
     patience=SCHEDULER_PATIENCE,
     min_lr=1e-8
 )
 
-def get_lr_for_epoch(optimizer, epoch, warmup_epochs=5): # Aumenta il numero di epoche di warmup per un aumento più morbido
+def get_lr_for_epoch(optimizer, epoch, warmup_epochs=5):
     if epoch < warmup_epochs:
-        # Aumenta il LR in modo più lineare, partendo da 1e-6
         lr = (LEARNING_RATE - 1e-6) * ((epoch + 1) / warmup_epochs) + 1e-6
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
@@ -67,57 +66,7 @@ def get_lr_for_epoch(optimizer, epoch, warmup_epochs=5): # Aumenta il numero di 
     else:
         return optimizer.param_groups[0]['lr']
 
-# Resume checkpoint logic
-start_epoch = 0
-best_val_loss = float('inf')
-no_improve_epochs = 0
-log = []
-
-if os.path.exists(LAST_MODEL_SAVE_PATH):
-    checkpoint = torch.load(LAST_MODEL_SAVE_PATH, weights_only=False)
-    state_dict = checkpoint['model_state_dict']
-    
-    if list(state_dict.keys())[0].startswith('module.') and not isinstance(model, torch.nn.DataParallel):
-        new_state_dict = OrderedDict()
-        for k, v in state_dict.items():
-            new_state_dict[k.replace("module.", "")] = v
-        state_dict = new_state_dict
-
-    model.load_state_dict(state_dict)
-    start_epoch = checkpoint['epoch'] + 1
-    best_val_loss = checkpoint.get('best_val_loss', float('inf'))
-    no_improve_epochs = checkpoint.get('no_improve_epochs', 0)
-    print(f"✔️ Checkpoint caricato. Riprendo da epoca {start_epoch}")
-
-def check_model_health(model, batch_idx):
-    """Controlla la salute del modello durante il training"""
-    total_norm = 0.0
-    param_count = 0
-    for name, param in model.named_parameters():
-        if param.grad is not None:
-            param_norm = param.grad.data.norm(2)
-            total_norm += param_norm.item() ** 2
-            param_count += 1
-            
-            # Check per NaN nei gradienti
-            if torch.isnan(param.grad).any():
-                print(f"\n❌ NaN nei gradienti di {name} al batch {batch_idx}")
-                print(f"   Param stats: min={param.data.min():.6f}, max={param.data.max():.6f}")
-                if param.grad is not None:
-                    print(f"   Grad stats: min={param.grad.min():.6f}, max={param.grad.max():.6f}")
-                return False
-            
-            # Check per gradienti troppo grandi
-            if param_norm > 10.0:
-                print(f"⚠️ Gradiente grande in {name}: {param_norm:.6f}")
-    
-    total_norm = total_norm ** (1. / 2)
-    if total_norm > 5.0:
-        print(f"⚠️ Norma gradienti globale alta: {total_norm:.6f}")
-    
-    return True
-
-# Funzione di training modificata: no mixed precision, no normalizzazione DTM
+# Corretto: Le funzioni di training e validation devono essere definite una volta sola.
 def train_one_epoch(model, loader, optimizer, epoch_num):
     model.train()
     running_loss = 0.0
@@ -214,7 +163,36 @@ def validate_one_epoch(model, loader):
     avg_metrics = {k: v / count for k, v in metric_sums.items()}
     return val_loss / count, avg_metrics
 
-# Training loop migliorato
+# Resume checkpoint logic
+start_epoch = 0
+best_val_loss = float('inf')
+no_improve_epochs = 0
+log = []
+
+if os.path.exists(LAST_MODEL_SAVE_PATH):
+    try:
+        print(f"✔️ Tentativo di caricare il checkpoint da: {LAST_MODEL_SAVE_PATH}")
+        checkpoint = torch.load(LAST_MODEL_SAVE_PATH, map_location=DEVICE)
+        
+        state_dict = checkpoint['model_state_dict']
+        if list(state_dict.keys())[0].startswith('module.') and not isinstance(model, torch.nn.DataParallel):
+            new_state_dict = OrderedDict()
+            for k, v in state_dict.items():
+                new_state_dict[k[7:]] = v
+            state_dict = new_state_dict
+        
+        model.load_state_dict(state_dict)
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        best_val_loss = checkpoint.get('best_val_loss', float('inf'))
+        no_improve_epochs = checkpoint.get('no_improve_epochs', 0)
+        log = checkpoint.get('log', [])
+        print(f"✔️ Checkpoint caricato con successo. Riprendo da epoca {start_epoch}")
+    except Exception as e:
+        print(f"❌ Errore durante il caricamento del checkpoint: {e}")
+        print("Inizio il training da zero.")
+
 print(f"📊 Parametri del modello: {sum(p.numel() for p in model.parameters()):,}")
 print(f"📊 Batch size ridotto: {BATCH_SIZE}")
 
@@ -230,10 +208,14 @@ for epoch in range(start_epoch, EPOCHS):
     try:
         train_loss, main_loss, aux_loss = train_one_epoch(model, train_loader, optimizer, epoch + 1)
         val_loss, val_metrics = validate_one_epoch(model, val_loader)
+        
     except Exception as e:
-        print(f"❌ Errore durante training: {e}")
+        print(f"❌ Errore durante training all'epoca {epoch+1}: {e}")
+        # Riduzione del LR e skip dell'epoca in caso di errore
         for param_group in optimizer.param_groups:
             param_group['lr'] *= 0.1
+        val_loss = float('inf')
+        val_metrics = {k: float('inf') for k in ["rmse", "mae", "nmad", "delta1", "delta2", "delta3"]}
         continue
 
     print(f"📉 Train loss: {train_loss:.4f} (main: {main_loss:.4f}, aux: {aux_loss:.4f})")
@@ -271,7 +253,8 @@ for epoch in range(start_epoch, EPOCHS):
         improvement = best_val_loss - val_loss
         best_val_loss = val_loss
         no_improve_epochs = 0
-        torch.save(model.state_dict(), BEST_MODEL_SAVE_PATH)
+        model_to_save = model.module if isinstance(model, torch.nn.DataParallel) else model
+        torch.save(model_to_save.state_dict(), BEST_MODEL_SAVE_PATH)
         print(f"💾 Nuovo best model salvato! Miglioramento: {improvement:.6f}")
         save_results.save_predictions(model, val_loader, DEVICE, PRED_SAVE_DIR)
     else:
