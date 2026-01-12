@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from config import *
 
 def edge_loss(pred, target, mask):
     sobel_x = torch.tensor([[1, 0, -1], [2, 0, -2], [1, 0, -1]], 
@@ -29,6 +30,7 @@ def gradient_difference_loss(pred, target, mask):
     target_dx = target[:, :, :, 1:] - target[:, :, :, :-1]
     target_dy = target[:, :, 1:, :] - target[:, :, :-1, :]
     
+    # Calcola la loss dei gradienti solo sulle aree mascherate
     loss_dx = (torch.abs(pred_dx - target_dx) * mask_dx).sum()
     loss_dy = (torch.abs(pred_dy - target_dy) * mask_dy).sum()
     
@@ -51,8 +53,11 @@ class VGGPerceptualLoss(nn.Module):
             for param in self.slice1.parameters():
                 param.requires_grad = False
 
-        self.register_buffer('depth_mean', torch.tensor([50.0]).view(1, 1, 1, 1))
-        self.register_buffer('depth_std', torch.tensor([50.0]).view(1, 1, 1, 1))
+        #self.register_buffer('depth_mean', torch.tensor([50.0]).view(1, 1, 1, 1))
+        #self.register_buffer('depth_std', torch.tensor([50.0]).view(1, 1, 1, 1))
+
+        self.register_buffer('depth_mean', torch.tensor([GLOBAL_DTM_MEAN]).view(1, 1, 1, 1))
+        self.register_buffer('depth_std', torch.tensor([GLOBAL_DTM_STD]).view(1, 1, 1, 1))
         
         self.register_buffer('vgg_mean', torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
         self.register_buffer('vgg_std', torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))

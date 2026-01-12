@@ -1,81 +1,67 @@
-from datetime import datetime
 import torch
 import numpy as np
-from torch.utils.data import DataLoader
-from model.unet import EfficientUNet
-from dataset.mars_dataset import RealMarsDataset
-from evaluation.metrics import rmse, mae, nmad, delta_metrics
-from utils.visualize import show_prediction
-from utils.save_results import *
-from evaluation.render import render_3d
-from config import *
+import pandas as pd
 
-# Caricamento modello e pesi
-model = EfficientUNet().to(DEVICE)
-model.load_state_dict(torch.load(BEST_MODEL_SAVE_PATH, map_location=DEVICE))
-model.eval()
+# === CONFIG ===
+GT_PATH = "/home/cdenicola/my_datasets/DTM"  # path DTM GT
+PRED_PATHS = {
+    "EnhancedSwinDepth": "model/swin_unet.py",
+    "EfficientUNet": "model/unetB5.py",
+    "EfficientUNetB4": "model/unetB4.py",
+}
+ELEVATION_RANGE = (0, 600)
+BIN_SIZE = 50
+SAMPLE_LIMIT = 2000
 
-# Dataset di test
-test_dataset = RealMarsDataset(CASSIS_PAN, CASSIS_DTM)
-test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+# === LOAD DATA ===
+def load_tensor(path):
+    t = torch.load(path, map_location="cpu")
+    if isinstance(t, dict) and "pred" in t:  # compatibilità
+        t = t["pred"]
+    return t.squeeze().detach().cpu().numpy().astype(np.float32)
 
-# Dizionario per salvare i risultati per ogni immagine
-all_metrics = {}
+# Carica subset di file
+from pathlib import Path
+gt_files = sorted(Path(GT_PATH).glob("*.pth"))[:SAMPLE_LIMIT]
 
-with torch.no_grad():
-    for idx, (image, target, fname) in enumerate(test_loader):
-        image, target = image.to(DEVICE), target.to(DEVICE)
-        output = model(image)
+predictions = {name: [] for name in PRED_PATHS}
+ground_truths = []
 
-        input_img = image.squeeze().cpu().numpy()
-        output_np = output.squeeze().cpu().numpy()
-        target_np = target.squeeze().cpu().numpy()
+for gt_file in gt_files:
+    gt = load_tensor(gt_file)
+    ground_truths.append(gt)
+    for name, folder in PRED_PATHS.items():
+        pred_file = Path(folder) / gt_file.name
+        if pred_file.exists():
+            pred = load_tensor(pred_file)
+            predictions[name].append(pred)
 
-        # Calcolo metriche
-        current_rmse = rmse(output_np, target_np)
-        current_mae = mae(output_np, target_np)
-        current_nmad = nmad(output_np, target_np)
-        d1, d2, d3 = delta_metrics(output_np, target_np)
+# Stack arrays
+gt_all = np.concatenate([g.flatten() for g in ground_truths])
+preds_all = {name: np.concatenate([p.flatten() for p in preds]) for name, preds in predictions.items()}
 
-        metrics_dict = {
-            "rmse": current_rmse,
-            "mae": current_mae,
-            "nmad": current_nmad,
-            "delta1": d1,
-            "delta2": d2,
-            "delta3": d3,
-        }
+# === SCALE DETECTION ===
+for name, pred in preds_all.items():
+    if np.max(pred) <= 1.5:  # sembra normalizzato
+        print(f"[INFO] {name} sembra normalizzato — scaling ×650")
+        preds_all[name] = pred * 650.0
+    else:
+        print(f"[INFO] {name} già in metri (max={np.max(pred):.2f})")
 
-        # Aggiungi le metriche al dizionario con il nome del file come chiave
-        filename = fname[0]
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        all_metrics[filename] = {"metrics": metrics_dict, "timestamp": timestamp}
+# === ABSOLUTE ERROR PER RANGE ===
+bins = np.arange(ELEVATION_RANGE[0], ELEVATION_RANGE[1] + BIN_SIZE, BIN_SIZE)
+results = []
 
-        # Output
-        print(f"\n🖼️ Prediction {idx + 1} - File: {filename}")
-        #print(f"[INPUT] min: {input_img.min():.2f}, max: {input_img.max():.2f}, mean: {input_img.mean():.2f}")
-        #print(f"[TARGET] min: {target_np.min():.2f}, max: {target_np.max():.2f}")
-        show_prediction(input_img, output_np, target_np)
-        # render_3d(output_np) # Opzionale
+for i in range(len(bins) - 1):
+    mask = (gt_all >= bins[i]) & (gt_all < bins[i + 1])
+    if np.sum(mask) == 0:
+        continue
+    row = {"Range (m)": f"[{bins[i]}, {bins[i+1]})"}
+    for name, pred in preds_all.items():
+        abs_error = np.abs(pred[mask] - gt_all[mask])
+        mean_error = np.mean(abs_error)
+        row[name] = mean_error
+    results.append(row)
 
-        # Salvataggio predizione e target come immagini (opzionale)
-        save_prediction_images(output_np, target_np, filename)
-
-# Salvataggio di tutti i risultati
-save_test_results(all_metrics)
-
-# Risultati finali aggregati
-rmse_list = [data["metrics"]["rmse"] for data in all_metrics.values()]
-mae_list = [data["metrics"]["mae"] for data in all_metrics.values()]
-nmad_list = [data["metrics"]["nmad"] for data in all_metrics.values()]
-delta1_list = [data["metrics"]["delta1"] for data in all_metrics.values()]
-delta2_list = [data["metrics"]["delta2"] for data in all_metrics.values()]
-delta3_list = [data["metrics"]["delta3"] for data in all_metrics.values()]
-
-print("\n📊 Risultati Test Aggregati:")
-print(f"  RMSE      : {np.mean(rmse_list):.4f}")
-print(f"  MAE       : {np.mean(mae_list):.4f}")
-print(f"  NMAD      : {np.mean(nmad_list):.4f}")
-print(f"  δ1 (<1.25): {np.mean(delta1_list) * 100:.2f}%")
-print(f"  δ2 (<1.25²): {np.mean(delta2_list) * 100:.2f}%")
-print(f"  δ3 (<1.25³): {np.mean(delta3_list) * 100:.2f}%")
+df = pd.DataFrame(results)
+print(df)

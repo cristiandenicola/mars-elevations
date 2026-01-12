@@ -56,12 +56,10 @@ class EnhancedFusionBlock(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x_deep, skip_feature):
-        # Upsample se necessario
         if x_deep.shape[-2:] != skip_feature.shape[-2:]:
             x_deep = F.interpolate(x_deep, size=skip_feature.shape[-2:], 
                                  mode='bilinear', align_corners=True)
 
-        # Concatena e riduci canali
         x = torch.cat([x_deep, skip_feature], dim=1)
         x = self.conv_reduce(x)
         
@@ -155,7 +153,7 @@ class EnhancedSwinDepth(nn.Module):
             feats = self.encoder(dummy)
         encoder_channels = [f.shape[1] for f in feats]
 
-        # ASPP per elaborare il bottleneck
+        # ASPP
         self.aspp = ASPP(encoder_channels[-1], DECODER_CHANNELS)
 
         # Projection blocks
@@ -164,7 +162,7 @@ class EnhancedSwinDepth(nn.Module):
                 nn.Conv2d(in_ch, DECODER_CHANNELS, 1),
                 nn.BatchNorm2d(DECODER_CHANNELS),
                 nn.ReLU(inplace=True)
-            ) for in_ch in encoder_channels[:-1]  # Escludi l'ultimo che usa ASPP
+            ) for in_ch in encoder_channels[:-1]
         ])
 
         # Enhanced fusion blocks
@@ -172,7 +170,7 @@ class EnhancedSwinDepth(nn.Module):
             EnhancedFusionBlock(DECODER_CHANNELS) for _ in range(len(encoder_channels) - 1)
         ])
 
-        # Multi-scale prediction heads per supervision
+        # Multi-scale prediction heads (supervision)
         self.aux_heads = nn.ModuleList([
             nn.Sequential(
                 nn.Conv2d(DECODER_CHANNELS, 64, 3, padding=1),
@@ -210,7 +208,6 @@ class EnhancedSwinDepth(nn.Module):
         for proj, f in zip(self.projection_blocks, features[:-1]):
             projected.append(proj(f))
 
-        # Decoder con multi-scale supervision
         skip_feats = list(reversed(projected))
         aux_outputs = []
         

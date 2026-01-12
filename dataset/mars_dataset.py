@@ -18,7 +18,7 @@ class RealMarsDataset(Dataset):
         shared_files = sorted(set(pan_files.keys()) & set(dtm_files.keys()))
 
         self.samples = [(pan_files[fname], dtm_files[fname]) for fname in shared_files]
-        print(f"✅ Dataset loaded correctly with {len(self.samples)} samples.")
+        print(f"Dataset loaded correctly with {len(self.samples)} samples")
 
     def read_raster_raw(self, path, nan_override=None):
         with rasterio.open(path) as src:
