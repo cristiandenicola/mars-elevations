@@ -28,5 +28,6 @@ Temporary Items
 mars-env/
 # Pychache
 __pycache__/
+*.pyc
 # Plots
 train_pred/
